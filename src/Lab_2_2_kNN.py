@@ -54,10 +54,17 @@ class knn:
             k (int, optional): Number of neighbors to use. Defaults to 5.
             p (int, optional): The degree of the Minkowski distance. Defaults to 2.
         """
-        if len(X_train) == len(y_train) and isinstance(k, int) and k > 0 and isinstance(p, int) and p > 0:
-            return True
-        else:
-            return False
+        if X_train.shape[0] != y_train.shape[0]:
+            raise ValueError("Length of X_train and y_train must be equal.")
+        if not isinstance(k, int) or k <= 0:
+            raise ValueError("k and p must be positive integers.")
+        if not isinstance(p, int) and p <= 0:
+            raise ValueError("k and p must be positive integers.")
+            
+        self.k = k
+        self.p = p
+        self.x_train = X_train
+        self.y_train = y_train
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
@@ -69,7 +76,24 @@ class knn:
         Returns:
             np.ndarray: Predicted class labels.
         """
-        # TODO
+        if self.x_train is None or self.y_train is None:
+            raise ValueError("The model has not been trained. Call `fit()` before predicting.")
+
+        predictions = []
+
+        for x in X:
+            distances = np.array([minkowski_distance(x, x_train) for x_train in self.x_train])
+
+            k_neighbors_indices = np.argsort(distances)[:self.k]  # Índices de los k más cercanos
+            k_neighbors_labels = self.y_train[k_neighbors_indices]  # Etiquetas de los vecinos
+
+            unique_labels, counts = np.unique(k_neighbors_labels, return_counts=True)
+            most_common = unique_labels[np.argmax(counts)]  # Clase con mayor frecuencia
+
+            # Guardar la predicción
+            predictions.append(most_common)
+
+        return np.array(predictions)
 
     def predict_proba(self, X):
         """
@@ -84,7 +108,28 @@ class knn:
         Returns:
             np.ndarray: Predicted class probabilities.
         """
-        # TODO
+        if self.x_train is None or self.y_train is None:
+            raise ValueError("The model has not been trained. Call `fit()` before predicting.")
+
+        unique_classes = np.unique(self.y_train)
+
+        probabilities = []
+
+        for x in X:
+            distances = np.array([minkowski_distance(x, x_train) for x_train in self.x_train])
+
+            k_neighbors_indices = np.argsort(distances)[:self.k]  # Índices de los k más cercanos
+            k_neighbors_labels = self.y_train[k_neighbors_indices]  # Etiquetas de los vecinos
+
+            class_counts = np.zeros(len(unique_classes))
+
+            for label in k_neighbors_labels:
+                class_counts[np.where(unique_classes == label)[0][0]] += 1  # Contar apariciones
+
+            class_probs = class_counts / self.k
+            probabilities.append(class_probs)
+
+        return np.array(probabilities)
 
     def compute_distances(self, point: np.ndarray) -> np.ndarray:
         """Compute distance from a point to every point in the training dataset
@@ -95,7 +140,12 @@ class knn:
         Returns:
             np.ndarray: distance from point to each point in the training dataset.
         """
-        # TODO
+        if self.x_train is None:
+            raise ValueError("The model has not been trained. Call `fit()` before computing distances.")
+
+        distances = np.array([minkowski_distance(point, x_train) for x_train in self.x_train])
+
+        return distances
 
     def get_k_nearest_neighbors(self, distances: np.ndarray) -> np.ndarray:
         """Get the k nearest neighbors indices given the distances matrix from a point.
@@ -109,7 +159,9 @@ class knn:
         Hint:
             You might want to check the np.argsort function.
         """
-        # TODO
+        k_nearest_indices = np.argsort(distances)[:self.k]
+
+        return k_nearest_indices
 
     def most_common_label(self, knn_labels: np.ndarray) -> int:
         """Obtain the most common label from the labels of the k nearest neighbors
@@ -120,7 +172,11 @@ class knn:
         Returns:
             int: most common label
         """
-        # TODO
+        unique_labels, counts = np.unique(knn_labels, return_counts=True)
+
+        most_common_index = np.argmax(counts)
+
+        return unique_labels[most_common_index]
 
     def __str__(self):
         """
@@ -225,22 +281,26 @@ def evaluate_classification_metrics(y_true, y_pred, positive_label):
     y_pred_mapped = np.array([1 if label == positive_label else 0 for label in y_pred])
 
     # Confusion Matrix
-    # TODO
+    tp = np.sum((y_true_mapped == 1) & (y_pred_mapped == 1))  # Verdaderos positivos
+    tn = np.sum((y_true_mapped == 0) & (y_pred_mapped == 0))  # Verdaderos negativos
+    fp = np.sum((y_true_mapped == 0) & (y_pred_mapped == 1))  # Falsos positivos
+    fn = np.sum((y_true_mapped == 1) & (y_pred_mapped == 0))  # Falsos negativos
+
 
     # Accuracy
-    # TODO
+    accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
 
     # Precision
-    # TODO
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
 
     # Recall (Sensitivity)
-    # TODO
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
 
     # Specificity
-    # TODO
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
 
     # F1 Score
-    # TODO
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
     return {
         "Confusion Matrix": [tn, fp, fn, tp],
@@ -276,7 +336,23 @@ def plot_calibration_curve(y_true, y_probs, positive_label, n_bins=10):
             - "true_proportions": Array of the fraction of positives in each bin
 
     """
-    # TODO
+    from sklearn.calibration import calibration_curve
+    y_true_mapped = np.array([1 if label == positive_label else 0 for label in y_true])
+
+    true_proportions, bin_edges = calibration_curve(y_true_mapped, y_probs, n_bins=n_bins, strategy="uniform")
+
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    # ✅ Graficar la curva de calibración
+    plt.figure(figsize=(6, 6))
+    plt.plot(bin_centers, true_proportions, marker='o', linestyle='-', label="Calibration Curve")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Perfectly Calibrated")
+    plt.xlabel("Mean Predicted Probability")
+    plt.ylabel("Fraction of Positives")
+    plt.title("Calibration Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
     return {"bin_centers": bin_centers, "true_proportions": true_proportions}
 
 
@@ -306,8 +382,22 @@ def plot_probability_histograms(y_true, y_probs, positive_label, n_bins=10):
                 Array of predicted probabilities for the negative class.
 
     """
-    # TODO
+    y_true_mapped = np.array([1 if label == positive_label else 0 for label in y_true])
 
+    # ✅ Separar probabilidades para clases positiva y negativa
+    probs_pos = y_probs[y_true_mapped == 1]
+    probs_neg = y_probs[y_true_mapped == 0]
+
+    # ✅ Graficar histogramas
+    plt.figure(figsize=(8, 5))
+    plt.hist(probs_neg, bins=n_bins, alpha=0.6, label="Negative Class", color="blue")
+    plt.hist(probs_pos, bins=n_bins, alpha=0.6, label="Positive Class", color="red")
+    plt.xlabel("Predicted Probability")
+    plt.ylabel("Frequency")
+    plt.title("Probability Histograms")
+    plt.legend()
+    plt.grid()
+    plt.show()
     return {
         "array_passed_to_histogram_of_positive_class": y_probs[y_true_mapped == 1],
         "array_passed_to_histogram_of_negative_class": y_probs[y_true_mapped == 0],
@@ -336,5 +426,20 @@ def plot_roc_curve(y_true, y_probs, positive_label):
             - "tpr": Array of True Positive Rates for each threshold.
 
     """
-    # TODO
+    from sklearn.metrics import roc_curve
+    y_true_mapped = np.array([1 if label == positive_label else 0 for label in y_true])
+
+    # ✅ Calcular FPR, TPR y thresholds
+    fpr, tpr, _ = roc_curve(y_true_mapped, y_probs)
+
+    # ✅ Graficar la curva ROC
+    plt.figure(figsize=(6, 6))
+    plt.plot(fpr, tpr, linestyle='-', label="ROC Curve")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Random Classifier")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
     return {"fpr": np.array(fpr), "tpr": np.array(tpr)}
