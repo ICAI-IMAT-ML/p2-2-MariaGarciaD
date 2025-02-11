@@ -336,23 +336,44 @@ def plot_calibration_curve(y_true, y_probs, positive_label, n_bins=10):
             - "true_proportions": Array of the fraction of positives in each bin
 
     """
-    from sklearn.calibration import calibration_curve
     y_true_mapped = np.array([1 if label == positive_label else 0 for label in y_true])
 
-    true_proportions, bin_edges = calibration_curve(y_true_mapped, y_probs, n_bins=n_bins, strategy="uniform")
+    bin_edges = np.linspace(0, 1, n_bins + 1)
 
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    bin_centers = []
+    true_proportions = []
 
-    # ✅ Graficar la curva de calibración
+    for i in range(n_bins):
+        start, end = bin_edges[i], bin_edges[i+1]
+        if i < n_bins - 1:
+            in_bin = (y_probs >= start) & (y_probs < end)
+        else:
+            in_bin = (y_probs >= start) & (y_probs <= end)
+
+        if np.any(in_bin):
+            fraction_pos = np.mean(y_true_mapped[in_bin])
+        else:
+            fraction_pos = 0.0
+
+        center = (start + end) / 2
+
+        bin_centers.append(center)
+        true_proportions.append(fraction_pos)
+
+    bin_centers = np.array(bin_centers)
+    true_proportions = np.array(true_proportions)
+
+    # 4. Graficamos la curva
     plt.figure(figsize=(6, 6))
     plt.plot(bin_centers, true_proportions, marker='o', linestyle='-', label="Calibration Curve")
     plt.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Perfectly Calibrated")
-    plt.xlabel("Mean Predicted Probability")
+    plt.xlabel("Mean Predicted Probability (Bin Center)")
     plt.ylabel("Fraction of Positives")
     plt.title("Calibration Curve")
     plt.legend()
-    plt.grid()
+    plt.grid(True)
     plt.show()
+
     return {"bin_centers": bin_centers, "true_proportions": true_proportions}
 
 
@@ -384,11 +405,9 @@ def plot_probability_histograms(y_true, y_probs, positive_label, n_bins=10):
     """
     y_true_mapped = np.array([1 if label == positive_label else 0 for label in y_true])
 
-    # ✅ Separar probabilidades para clases positiva y negativa
     probs_pos = y_probs[y_true_mapped == 1]
     probs_neg = y_probs[y_true_mapped == 0]
 
-    # ✅ Graficar histogramas
     plt.figure(figsize=(8, 5))
     plt.hist(probs_neg, bins=n_bins, alpha=0.6, label="Negative Class", color="blue")
     plt.hist(probs_pos, bins=n_bins, alpha=0.6, label="Positive Class", color="red")
@@ -426,20 +445,44 @@ def plot_roc_curve(y_true, y_probs, positive_label):
             - "tpr": Array of True Positive Rates for each threshold.
 
     """
-    from sklearn.metrics import roc_curve
+    # 1. Convertir y_true a binario (0/1)
     y_true_mapped = np.array([1 if label == positive_label else 0 for label in y_true])
 
-    # ✅ Calcular FPR, TPR y thresholds
-    fpr, tpr, _ = roc_curve(y_true_mapped, y_probs)
+    # 2. Definimos los 11 umbrales de 0 a 1 (ambos incluidos)
+    thresholds = np.linspace(0, 1, 11)
 
-    # ✅ Graficar la curva ROC
+    fpr_list = []
+    tpr_list = []
+
+    # 3. Para cada umbral, calculamos FPR y TPR
+    for thresh in thresholds:
+        # Predicción binaria según el umbral
+        y_pred = (y_probs >= thresh).astype(int)
+
+        # Verdaderos positivos, falsos positivos, falsos negativos, verdaderos negativos
+        tp = np.sum((y_true_mapped == 1) & (y_pred == 1))
+        fp = np.sum((y_true_mapped == 0) & (y_pred == 1))
+        fn = np.sum((y_true_mapped == 1) & (y_pred == 0))
+        tn = np.sum((y_true_mapped == 0) & (y_pred == 0))
+
+        # TPR (sensibilidad)
+        tpr = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        # FPR
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+
+        tpr_list.append(tpr)
+        fpr_list.append(fpr)
+
+    # 4. Graficar
     plt.figure(figsize=(6, 6))
-    plt.plot(fpr, tpr, linestyle='-', label="ROC Curve")
-    plt.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Random Classifier")
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
+    plt.plot(fpr_list, tpr_list, marker='o', label="ROC Curve")
+    plt.plot([0, 1], [0, 1], '--', color='gray', label="Random Classifier")
+    plt.xlabel("False Positive Rate (FPR)")
+    plt.ylabel("True Positive Rate (TPR)")
     plt.title("ROC Curve")
     plt.legend()
-    plt.grid()
+    plt.grid(True)
     plt.show()
-    return {"fpr": np.array(fpr), "tpr": np.array(tpr)}
+
+    # 5. Retornar en el mismo orden que se calculó
+    return {"fpr": np.array(fpr_list), "tpr": np.array(tpr_list)}
