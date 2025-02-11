@@ -54,6 +54,7 @@ class knn:
             k (int, optional): Number of neighbors to use. Defaults to 5.
             p (int, optional): The degree of the Minkowski distance. Defaults to 2.
         """
+        
         if X_train.shape[0] != y_train.shape[0]:
             raise ValueError("Length of X_train and y_train must be equal.")
         if not isinstance(k, int) or k <= 0:
